@@ -1,7 +1,7 @@
 """Persist the Navidrome administrator username per media server.
 
 Revision ID: 20261022_navidrome_admin_username
-Revises: 20261013_plex_invite_restrictions, 9c3e5a7d1b20
+Revises: 20261013_plex_invite_restrictions
 Create Date: 2026-10-22 00:00:00.000000
 """
 
@@ -10,7 +10,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "20261022_navidrome_admin_username"
-down_revision = ("20261013_plex_invite_restrictions", "9c3e5a7d1b20")
+down_revision = "20261013_plex_invite_restrictions"
 branch_labels = None
 depends_on = None
 

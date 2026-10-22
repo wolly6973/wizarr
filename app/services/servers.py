@@ -234,7 +234,9 @@ def check_kavita(url: str, token: str) -> tuple[bool, str]:
         return handle_connection_error(e, _("Kavita"))
 
 
-def check_navidrome(url: str, token: str) -> tuple[bool, str]:
+def check_navidrome(
+    url: str, token: str, username: str | None = None
+) -> tuple[bool, str]:
     """Quick connectivity check for a Navidrome instance.
 
     We perform a lightweight request to the ``/rest/ping`` endpoint which is
@@ -248,7 +250,7 @@ def check_navidrome(url: str, token: str) -> tuple[bool, str]:
 
         # Build Subsonic API authentication parameters
         params = {
-            "u": "admin",  # Default username for API access
+            "u": username.strip() if username and username.strip() else "admin",
             "v": "1.16.1",  # Supported API version
             "c": "wizarr",  # Client identifier
             "f": "json",  # Response format

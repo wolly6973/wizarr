@@ -224,8 +224,12 @@ def get_client(
         client.url = url
     if token:
         client.token = token
-    if server_type == "navidrome" and username:
-        client.username = username.strip() or "admin"
+    if server_type == "navidrome" and (
+        username is not None or url is not None or token is not None
+    ):
+        # Explicit scan credentials must not inherit another saved Navidrome
+        # server's administrator username through MediaClient's lookup fallback.
+        client.username = (username or "").strip() or "admin"
     return client
 
 

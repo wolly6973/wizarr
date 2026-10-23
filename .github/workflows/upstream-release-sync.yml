@@ -142,7 +142,7 @@ jobs:
           - Source: https://github.com/wizarrrr/wizarr/releases/tag/$RELEASE_TAG
           - The merge was created from the fork's current \`main\`.
           - The full Python/Playwright test suite passed in the sync workflow before this PR was opened.
-          - Merging this PR into `main` will trigger the existing \`:dev\` container-image build workflow.
+          - Merging this PR into \`main\` will trigger the existing \`:dev\` container-image build workflow.
           - This PR does **not** deploy or restart the production container.
 
           Please review the diff and test the resulting \`ghcr.io/wolly6973/wizarr:dev\` image in the isolated test instance before updating production.

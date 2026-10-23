@@ -50,6 +50,14 @@ jobs:
           BRANCH="upstream-sync-$RELEASE_TAG"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
+          # Do not recreate a candidate when this release already has an open review PR.
+          OPEN_PR_COUNT="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$GITHUB_REPOSITORY_OWNER:$BRANCH" --state open --json number --jq 'length')"
+          if [[ "$OPEN_PR_COUNT" -gt 0 ]]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "An open PR already exists for $RELEASE_TAG; leaving it for review."
+            exit 0
+          fi
+
           # If this release is already in the fork's history, there is nothing to do.
           if git merge-base --is-ancestor "$RELEASE_TAG" origin/main; then
             echo "needed=false" >> "$GITHUB_OUTPUT"

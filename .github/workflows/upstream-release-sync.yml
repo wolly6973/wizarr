@@ -41,6 +41,7 @@ jobs:
       - name: Merge upstream release into a candidate branch
         id: merge
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
@@ -137,15 +138,15 @@ jobs:
             --head "$BRANCH" \
             --title "Sync upstream Wizarr release $RELEASE_TAG" \
             --body "$(cat <<EOF
-          This PR merges the official \`wizarrrr/wizarr\` stable release **$RELEASE_TAG** into this fork while retaining the fork's Navidrome integration.
+          This PR merges the official `wizarrrr/wizarr` stable release **$RELEASE_TAG** into this fork while retaining the fork's Navidrome integration.
 
           - Source: https://github.com/wizarrrr/wizarr/releases/tag/$RELEASE_TAG
-          - The merge was created from the fork's current \`main\`.
+          - The merge was created from the fork's current `main`.
           - The full Python/Playwright test suite passed in the sync workflow before this PR was opened.
-          - Merging this PR into \`main\` will trigger the existing \`:dev\` container-image build workflow.
+          - Merging this PR into `main` will trigger the existing `:dev` container-image build workflow.
           - This PR does **not** deploy or restart the production container.
 
-          Please review the diff and test the resulting \`ghcr.io/wolly6973/wizarr:dev\` image in the isolated test instance before updating production.
+          Please review the diff and test the resulting `ghcr.io/wolly6973/wizarr:dev` image in the isolated test instance before updating production.
           EOF
           )"
 
@@ -160,7 +161,7 @@ jobs:
             echo "## Upstream Wizarr release sync"
             echo "- Latest stable upstream release: ${RELEASE_TAG:-not determined}"
             if [[ "$NEEDED" == "true" ]]; then
-              echo "- Candidate branch: \`$BRANCH\`"
+              echo "- Candidate branch: `$BRANCH`"
               echo "- Tests must pass before the review PR is created."
               echo "- Production is never deployed by this workflow."
             elif [[ "$NEEDED" == "false" ]]; then

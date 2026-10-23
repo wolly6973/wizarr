@@ -1,0 +1,163 @@
+name: Sync upstream Wizarr release
+
+on:
+  schedule:
+    # Check daily for a new stable upstream release.
+    - cron: "23 15 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-release-sync
+  cancel-in-progress: false
+
+jobs:
+  check-and-propose:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out fork
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Find latest stable upstream release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="$(gh api repos/wizarrrr/wizarr/releases/latest --jq .tag_name)"
+          if [[ -z "$TAG" || "$TAG" == "null" ]]; then
+            echo "::error::Could not determine the latest stable upstream release."
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Latest stable upstream release: $TAG"
+
+      - name: Merge upstream release into a candidate branch
+        id: merge
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/wizarrrr/wizarr.git
+          git fetch --no-tags upstream "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+
+          BRANCH="upstream-sync-$RELEASE_TAG"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+          # If this release is already in the fork's history, there is nothing to do.
+          if git merge-base --is-ancestor "$RELEASE_TAG" origin/main; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "Release $RELEASE_TAG is already contained in main."
+            exit 0
+          fi
+
+          git switch -c "$BRANCH" origin/main
+          if ! git merge --no-edit "$RELEASE_TAG"; then
+            git merge --abort || true
+            echo "::error::Could not cleanly merge upstream release $RELEASE_TAG. No branch or PR was published; resolve the conflict manually."
+            exit 1
+          fi
+
+          if git diff --quiet origin/main HEAD; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "Merging $RELEASE_TAG produced no file changes."
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "Candidate merge created for $RELEASE_TAG."
+          fi
+
+      - name: Set up Python
+        if: steps.merge.outputs.needed == 'true'
+        uses: actions/setup-python@v7
+        with:
+          python-version-file: pyproject.toml
+
+      - name: Install uv
+        if: steps.merge.outputs.needed == 'true'
+        uses: astral-sh/setup-uv@v10.3.0
+
+      - name: Install project and test dependencies
+        if: steps.merge.outputs.needed == 'true'
+        run: uv sync --dev
+
+      - name: Set up Node
+        if: steps.merge.outputs.needed == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: app/static/package-lock.json
+
+      - name: Build frontend assets
+        if: steps.merge.outputs.needed == 'true'
+        run: |
+          npm --prefix app/static ci
+          npm --prefix app/static run build
+
+      - name: Install Playwright browsers
+        if: steps.merge.outputs.needed == 'true'
+        run: uv run playwright install --with-deps
+
+      - name: Run full test suite
+        if: steps.merge.outputs.needed == 'true'
+        run: uv run pytest --verbose
+
+      - name: Publish candidate branch and open review PR
+        if: steps.merge.outputs.needed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          BRANCH: ${{ steps.merge.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git push origin "$BRANCH"
+
+          if gh pr view "$BRANCH" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "A pull request for $BRANCH already exists; leaving it open for review."
+            exit 0
+          fi
+
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head "$BRANCH" \
+            --title "Sync upstream Wizarr release $RELEASE_TAG" \
+            --body "$(cat <<EOF
+          This PR merges the official `wizarrrr/wizarr` stable release **$RELEASE_TAG** into this fork while retaining the fork's Navidrome integration.
+
+          - Source: https://github.com/wizarrrr/wizarr/releases/tag/$RELEASE_TAG
+          - The merge was created from the fork's current `main`.
+          - The full Python/Playwright test suite passed in the sync workflow before this PR was opened.
+          - Merging this PR into `main` will trigger the existing `:dev` container-image build workflow.
+          - This PR does **not** deploy or restart the production container.
+
+          Please review the diff and test the resulting `ghcr.io/wolly6973/wizarr:dev` image in the isolated test instance before updating production.
+          EOF
+          )"
+
+      - name: Summary
+        if: always()
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          NEEDED: ${{ steps.merge.outputs.needed }}
+          BRANCH: ${{ steps.merge.outputs.branch }}
+        run: |
+          {
+            echo "## Upstream Wizarr release sync"
+            echo "- Latest stable upstream release: ${RELEASE_TAG:-not determined}"
+            if [[ "$NEEDED" == "true" ]]; then
+              echo "- Candidate branch: `$BRANCH`"
+              echo "- Tests must pass before the review PR is created."
+              echo "- Production is never deployed by this workflow."
+            elif [[ "$NEEDED" == "false" ]]; then
+              echo "- No sync PR needed."
+            else
+              echo "- Sync did not complete; inspect the earlier job steps."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
